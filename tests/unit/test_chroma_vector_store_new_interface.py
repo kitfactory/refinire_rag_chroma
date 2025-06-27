@@ -42,7 +42,7 @@ class TestChromeVectorStoreNewInterface:
     def mock_embedder(self):
         """Create a mock embedder"""
         embedder = Mock()
-        embedder.embed.return_value = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        embedder.embed_text.return_value = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
         return embedder
     
     def test_add_vector_new_interface(self, vector_store, sample_vector_entry):
@@ -341,7 +341,7 @@ class TestChromeVectorStoreNewInterface:
         assert vector_store.count_vectors() == 2
         
         # Verify embedder was called
-        assert mock_embedder.embed.call_count == 2
+        assert mock_embedder.embed_text.call_count == 2
     
     def test_process_without_embedder_raises_error(self, vector_store):
         """Test process raises error when no embedder is set"""

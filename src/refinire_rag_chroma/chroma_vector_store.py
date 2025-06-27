@@ -550,7 +550,7 @@ class ChromaVectorStore(VectorStore):
         Set the embedder for generating vector embeddings
         
         Args:
-            embedder: Embedder instance with embed() method
+            embedder: Embedder instance with embed_text() method
         """
         self.embedder = embedder
         logger.info(f"Set embedder: {type(embedder).__name__}")
@@ -572,7 +572,7 @@ class ChromaVectorStore(VectorStore):
         for document in documents:
             try:
                 # Generate embedding for the document
-                embedding = self.embedder.embed(document.content)
+                embedding = self.embedder.embed_text(document.content)
                 
                 # Convert embedding to numpy array if it isn't already
                 if not isinstance(embedding, np.ndarray):
