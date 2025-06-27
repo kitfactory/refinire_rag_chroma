@@ -308,7 +308,9 @@ class TestChromeVectorStoreNewInterface:
     def test_set_embedder(self, vector_store, mock_embedder):
         """Test set_embedder method"""
         vector_store.set_embedder(mock_embedder)
-        assert vector_store.embedder == mock_embedder
+        # Check both attributes for compatibility
+        assert vector_store._embedder == mock_embedder  # ベースクラス用
+        assert vector_store.embedder == mock_embedder   # 後方互換性
     
     def test_process_documents(self, vector_store, mock_embedder):
         """Test DocumentProcessor process method"""

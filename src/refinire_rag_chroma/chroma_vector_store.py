@@ -62,7 +62,8 @@ class ChromaVectorStore(VectorStore):
         # Initialize ChromaDB components
         self.client = None
         self.collection = None
-        self.embedder = None
+        self._embedder = None  # ベースクラスが期待する属性名
+        self.embedder = None   # 後方互換性のため
         
         logger.info(f"ChromaVectorStore initialized: collection={self.collection_name}, "
                    f"persist_dir={self.persist_directory or 'in-memory'}, metric={self.distance_metric}")
@@ -552,7 +553,8 @@ class ChromaVectorStore(VectorStore):
         Args:
             embedder: Embedder instance with embed_text() method
         """
-        self.embedder = embedder
+        self._embedder = embedder  # ベースクラスが期待する属性名
+        self.embedder = embedder   # 後方互換性のため
         logger.info(f"Set embedder: {type(embedder).__name__}")
     
     def process(self, documents: Iterable[Document], config: Optional[Any] = None) -> Iterator[Document]:
@@ -566,13 +568,13 @@ class ChromaVectorStore(VectorStore):
         Returns:
             Iterator of processed documents (same as input)
         """
-        if not self.embedder:
+        if not self._embedder:
             raise StorageError("Embedder not set. Call set_embedder() first.")
         
         for document in documents:
             try:
                 # Generate embedding for the document
-                embedding = self.embedder.embed_text(document.content)
+                embedding = self._embedder.embed_text(document.content)
                 
                 # Convert embedding to numpy array if it isn't already
                 if not isinstance(embedding, np.ndarray):
