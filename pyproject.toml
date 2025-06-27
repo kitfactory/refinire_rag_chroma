@@ -1,14 +1,15 @@
 [project]
 name = "refinire-rag-chroma"
-version = "0.0.1"
+version = "0.0.3"
 description = "ChromaDB VectorStore plugin for refinire-rag"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "chromadb>=0.4.0",
     "numpy>=2.2.6",
+    "oneenv>=0.3.1",
     "pydantic>=2.0.0",
-    "refinire-rag>=0.0.1",
+    "refinire-rag>=0.1.4",
 ]
 
 [project.optional-dependencies]
@@ -17,17 +18,14 @@ dev = [
     "pytest-cov>=4.1.0"
 ]
 
+[project.entry-points."refinire_rag.vector_stores"]
+chroma = "refinire_rag_chroma:ChromaVectorStore"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = [
     "--import-mode=importlib",
-    "--cov=src",
+    "--cov=src/refinire_rag_chroma",
     "--cov-report=term-missing"
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.4.0",
-    "pytest-cov>=6.1.1",
 ]

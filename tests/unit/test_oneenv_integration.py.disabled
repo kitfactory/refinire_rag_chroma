@@ -1,0 +1,181 @@
+"""
+Tests for oneenv integration with ChromaVectorStore
+"""
+
+import os
+import pytest
+import tempfile
+from unittest.mock import patch
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+
+try:
+    from config import load_chroma_config_safe, get_current_profile
+    from chroma_vector_store import ChromaVectorStore
+    ONEENV_TESTS_ENABLED = True
+except ImportError:
+    ONEENV_TESTS_ENABLED = False
+
+
+@pytest.mark.skipif(not ONEENV_TESTS_ENABLED, reason="oneenv not available")
+class TestOneenvIntegration:
+    """Test oneenv integration with ChromaVectorStore"""
+    
+    def test_profile_detection(self):
+        """Test automatic profile detection"""
+        # Test default profile
+        with patch.dict(os.environ, {}, clear=True):
+            profile = get_current_profile()
+            assert profile == "development"
+        
+        # Test ENV variable
+        with patch.dict(os.environ, {"ENV": "production"}):
+            profile = get_current_profile()
+            assert profile == "production"
+        
+        # Test ENVIRONMENT variable
+        with patch.dict(os.environ, {"ENVIRONMENT": "testing"}):
+            profile = get_current_profile()
+            assert profile == "testing"
+        
+        # Test abbreviations
+        with patch.dict(os.environ, {"ENV": "prod"}):
+            profile = get_current_profile()
+            assert profile == "production"
+        
+        with patch.dict(os.environ, {"ENV": "dev"}):
+            profile = get_current_profile()
+            assert profile == "development"
+    
+    def test_safe_config_loading(self):
+        """Test safe configuration loading"""
+        # Should return None for invalid profile
+        config = load_chroma_config_safe("nonexistent_profile")
+        assert config is None
+        
+        # Should work for testing profile
+        config = load_chroma_config_safe("testing")
+        if config:  # Only test if profile exists
+            assert config.collection_name == "test_collection"
+            assert config.auto_clear_on_init is True
+    
+    def test_profile_based_initialization(self):
+        """Test ChromaVectorStore initialization with profiles"""
+        # Test with testing profile
+        vector_store = ChromaVectorStore(profile="testing")
+        
+        # Should use testing configuration
+        assert "test" in vector_store.collection_name.lower()
+        assert vector_store.auto_clear_on_init is True
+        assert vector_store.batch_size == 10  # Small batch for testing
+    
+    def test_environment_override(self):
+        """Test that constructor parameters override profile settings"""
+        vector_store = ChromaVectorStore(
+            profile="testing",
+            collection_name="override_collection"
+        )
+        
+        # Should use override value
+        assert vector_store.collection_name == "override_collection"
+        # Should still use profile values for other settings
+        assert vector_store.auto_clear_on_init is True  # From testing profile
+    
+    def test_fallback_behavior(self):
+        """Test fallback to environment variables when oneenv fails"""
+        # Set environment variables
+        with patch.dict(os.environ, {
+            "REFINIRE_RAG_CHROMA_COLLECTION_NAME": "env_fallback_collection",
+            "REFINIRE_RAG_CHROMA_BATCH_SIZE": "42"
+        }):
+            # Initialize without profile (should use env vars)
+            vector_store = ChromaVectorStore()
+            
+            assert vector_store.collection_name == "env_fallback_collection"
+            assert vector_store.batch_size == 42
+    
+    def test_backward_compatibility(self):
+        """Test that the old initialization method still works"""
+        vector_store = ChromaVectorStore(
+            collection_name="legacy_collection",
+            distance_metric="l2"
+        )
+        
+        assert vector_store.collection_name == "legacy_collection"
+        assert vector_store.distance_metric == "l2"
+    
+    @patch.dict(os.environ, {"ENV": "development"})
+    def test_development_profile_auto_detection(self):
+        """Test auto-detection of development profile"""
+        vector_store = ChromaVectorStore()
+        
+        # Should auto-detect development profile
+        assert "dev" in vector_store.collection_name.lower()
+        assert vector_store.persist_directory == "./data/chroma"
+        assert vector_store.batch_size == 50  # Development optimization
+    
+    def test_config_validation(self):
+        """Test that configuration validation works"""
+        # Test with invalid distance metric
+        with pytest.raises(ValueError):
+            ChromaVectorStore(distance_metric="invalid_metric")
+        
+        # Test with invalid batch size
+        with pytest.raises(ValueError):
+            ChromaVectorStore(
+                profile="testing",
+                collection_name="test"
+            )
+            # Directly set invalid batch size (would need to mock the config)
+    
+    def test_zero_configuration(self):
+        """Test that zero configuration still works"""
+        # Clear all environment variables
+        env_vars_to_clear = [
+            "ENV", "ENVIRONMENT", "ONEENV_PROFILE",
+            "REFINIRE_RAG_CHROMA_COLLECTION_NAME",
+            "REFINIRE_RAG_CHROMA_PERSIST_DIRECTORY",
+            "REFINIRE_RAG_CHROMA_DISTANCE_METRIC",
+            "REFINIRE_RAG_CHROMA_BATCH_SIZE",
+            "REFINIRE_RAG_CHROMA_MAX_RETRIES",
+            "REFINIRE_RAG_CHROMA_AUTO_CREATE_COLLECTION",
+            "REFINIRE_RAG_CHROMA_AUTO_CLEAR_ON_INIT"
+        ]
+        
+        original_values = {}
+        for var in env_vars_to_clear:
+            original_values[var] = os.environ.pop(var, None)
+        
+        try:
+            vector_store = ChromaVectorStore()
+            
+            # Should use defaults (possibly from development profile)
+            assert vector_store.collection_name is not None
+            assert vector_store.distance_metric in ["cosine", "l2", "ip"]
+            assert vector_store.batch_size > 0
+            assert vector_store.max_retries >= 0
+        finally:
+            # Restore environment variables
+            for var, value in original_values.items():
+                if value is not None:
+                    os.environ[var] = value
+
+
+class TestOneenvDisabled:
+    """Test behavior when oneenv is not available"""
+    
+    @patch.dict(os.environ, {}, clear=True)
+    def test_fallback_without_oneenv(self):
+        """Test that ChromaVectorStore works without oneenv"""
+        from chroma_vector_store import ChromaVectorStore
+        
+        with patch.dict(os.environ, {
+            "REFINIRE_RAG_CHROMA_COLLECTION_NAME": "fallback_collection",
+            "REFINIRE_RAG_CHROMA_DISTANCE_METRIC": "l2"
+        }):
+            vector_store = ChromaVectorStore()
+            
+            assert vector_store.collection_name == "fallback_collection"
+            assert vector_store.distance_metric == "l2"

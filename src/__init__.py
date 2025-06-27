@@ -6,16 +6,20 @@ __version__ = "0.0.1"
 __author__ = "refinire-rag-chroma contributors"
 __description__ = "ChromaDB VectorStore plugin for refinire-rag"
 
-from .models import VectorStore, VectorDocument, VectorSearchQuery, VectorSearchResult, CollectionConfig
-from .service import ChromaVectorStore, ChromaService
+from .chroma_vector_store import ChromaVectorStore
 
-__all__ = [
-    "__version__",
-    "VectorStore",
-    "VectorDocument", 
-    "VectorSearchQuery",
-    "VectorSearchResult",
-    "CollectionConfig",
-    "ChromaVectorStore",
-    "ChromaService"
-]
+# Try to import oneenv-related utilities
+try:
+    from .config import load_chroma_config, load_chroma_config_safe, get_current_profile
+    __all__ = [
+        "__version__",
+        "ChromaVectorStore",
+        "load_chroma_config",
+        "load_chroma_config_safe", 
+        "get_current_profile"
+    ]
+except ImportError:
+    __all__ = [
+        "__version__",
+        "ChromaVectorStore"
+    ]

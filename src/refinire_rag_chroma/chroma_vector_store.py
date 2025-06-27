@@ -2,11 +2,12 @@
 ChromaDB implementation of refinire-rag VectorStore
 
 This module provides a ChromaDB-based implementation of the refinire-rag VectorStore interface,
-allowing seamless integration with the refinire-rag ecosystem.
+following the new plugin development guidelines.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Tuple, Iterable, Iterator, Type
+import os
+from typing import List, Dict, Any, Optional, Tuple, Iterable, Iterator
 import numpy as np
 import chromadb
 from chromadb.api.models.Collection import Collection
@@ -14,8 +15,6 @@ from chromadb.api.models.Collection import Collection
 from refinire_rag.storage import VectorStore, VectorEntry, VectorSearchResult, VectorStoreStats
 from refinire_rag.exceptions import StorageError
 from refinire_rag.models.document import Document
-from config import ChromaVectorStoreConfig
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -28,54 +27,39 @@ class ChromaVectorStore(VectorStore):
     offering persistent storage and efficient similarity search capabilities.
     """
     
-    def __init__(
-        self,
-        collection_name: Optional[str] = None,
-        persist_directory: Optional[str] = None,
-        distance_metric: Optional[str] = None,
-        config: Optional[ChromaVectorStoreConfig] = None
-    ):
+    def __init__(self, **kwargs):
         """
         Initialize ChromaDB Vector Store
         
         Args:
-            collection_name: Override collection name (deprecated, use config)
-            persist_directory: Override persist directory (deprecated, use config)
-            distance_metric: Override distance metric (deprecated, use config)
-            config: ChromaVectorStoreConfig instance for new plugin guide compliance
+            **kwargs: Configuration parameters
+                - collection_name: ChromaDB collection name (default: refinire_documents)
+                - persist_directory: Directory for persistent storage (default: None for in-memory)
+                - distance_metric: Distance metric for similarity search (default: cosine)
+                - batch_size: Batch size for bulk operations (default: 100)
+                - max_retries: Maximum retry attempts (default: 3)
+                - auto_create_collection: Auto-create collection if it doesn't exist (default: True)
+                - auto_clear_on_init: Clear collection on initialization (default: False)
         """
-        # Use new config class if provided, otherwise fallback to legacy method
-        if config is not None:
-            self.config = config
-            # Validate configuration
-            self.config.validate()
-            
-            # Extract values from config
-            self.collection_name = self.config.collection_name
-            self.persist_directory = self.config.persist_directory
-            self.distance_metric = self.config.distance_metric
-            self.batch_size = self.config.batch_size
-            self.max_retries = self.config.max_retries
-            self.auto_create_collection = self.config.auto_create_collection
-            self.auto_clear_on_init = self.config.auto_clear_on_init
-        else:
-            # Legacy configuration method for backward compatibility
-            self.config = ChromaVectorStoreConfig()
-            self._load_from_env_vars(collection_name, persist_directory, distance_metric)
-            self._validate_config()
+        # Initialize configuration from kwargs and environment variables
+        self._config = self._load_config(**kwargs)
         
-        # Initialize DocumentProcessor with config
-        config_dict = {
-            'collection_name': self.collection_name,
-            'persist_directory': self.persist_directory,
-            'distance_metric': self.distance_metric,
-            'batch_size': self.batch_size,
-            'max_retries': self.max_retries,
-            'auto_create_collection': self.auto_create_collection,
-            'auto_clear_on_init': self.auto_clear_on_init
-        }
-        super().__init__(config_dict)
+        # Set configuration properties
+        self.collection_name = self._config["collection_name"]
+        self.persist_directory = self._config["persist_directory"]
+        self.distance_metric = self._config["distance_metric"]
+        self.batch_size = self._config["batch_size"]
+        self.max_retries = self._config["max_retries"]
+        self.auto_create_collection = self._config["auto_create_collection"]
+        self.auto_clear_on_init = self._config["auto_clear_on_init"]
         
+        # Validate configuration
+        self._validate_config()
+        
+        # Initialize parent class with config
+        super().__init__(self._config)
+        
+        # Initialize ChromaDB components
         self.client = None
         self.collection = None
         self.embedder = None
@@ -86,40 +70,53 @@ class ChromaVectorStore(VectorStore):
         self._initialize_client()
         self._initialize_collection()
     
-    def _load_from_env_vars(
-        self, 
-        collection_name: Optional[str], 
-        persist_directory: Optional[str], 
-        distance_metric: Optional[str]
-    ):
-        """Load configuration from environment variables"""
-        # Parse boolean values
+    def _load_config(self, **kwargs) -> Dict[str, Any]:
+        """
+        Load configuration from kwargs and environment variables
+        
+        Priority: kwargs > environment variables > default values
+        """
         def parse_bool(value: str) -> bool:
             return value.lower() in ("true", "1", "yes", "on")
         
-        self.collection_name = collection_name or os.getenv(
-            "REFINIRE_RAG_CHROMA_COLLECTION_NAME", 
-            "refinire_documents"
-        )
-        persist_dir = persist_directory or os.getenv("REFINIRE_RAG_CHROMA_PERSIST_DIRECTORY")
-        self.persist_directory = None if persist_dir == "" else persist_dir
+        config = {
+            "collection_name": kwargs.get("collection_name") or os.getenv(
+                "REFINIRE_RAG_CHROMA_COLLECTION_NAME", "refinire_documents"
+            ),
+            "persist_directory": kwargs.get("persist_directory") or os.getenv(
+                "REFINIRE_RAG_CHROMA_PERSIST_DIRECTORY"
+            ),
+            "distance_metric": kwargs.get("distance_metric") or os.getenv(
+                "REFINIRE_RAG_CHROMA_DISTANCE_METRIC", "cosine"
+            ),
+            "batch_size": kwargs.get("batch_size") or int(os.getenv(
+                "REFINIRE_RAG_CHROMA_BATCH_SIZE", "100"
+            )),
+            "max_retries": kwargs.get("max_retries") or int(os.getenv(
+                "REFINIRE_RAG_CHROMA_MAX_RETRIES", "3"
+            )),
+            "auto_create_collection": kwargs.get("auto_create_collection") or parse_bool(os.getenv(
+                "REFINIRE_RAG_CHROMA_AUTO_CREATE_COLLECTION", "true"
+            )),
+            "auto_clear_on_init": kwargs.get("auto_clear_on_init") or parse_bool(os.getenv(
+                "REFINIRE_RAG_CHROMA_AUTO_CLEAR_ON_INIT", "false"
+            ))
+        }
         
-        self.distance_metric = distance_metric or os.getenv(
-            "REFINIRE_RAG_CHROMA_DISTANCE_METRIC", 
-            "cosine"
-        )
+        # Handle empty string for persist_directory
+        if config["persist_directory"] == "":
+            config["persist_directory"] = None
         
-        # Additional environment variables
-        self.batch_size = int(os.getenv("REFINIRE_RAG_CHROMA_BATCH_SIZE", "100"))
-        self.max_retries = int(os.getenv("REFINIRE_RAG_CHROMA_MAX_RETRIES", "3"))
-        self.auto_create_collection = parse_bool(os.getenv(
-            "REFINIRE_RAG_CHROMA_AUTO_CREATE_COLLECTION", 
-            "true"
-        ))
-        self.auto_clear_on_init = parse_bool(os.getenv(
-            "REFINIRE_RAG_CHROMA_AUTO_CLEAR_ON_INIT", 
-            "false"
-        ))
+        return config
+    
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get current configuration
+        
+        Returns:
+            Dictionary containing current configuration settings
+        """
+        return self._config.copy()
     
     def _initialize_client(self) -> None:
         """Initialize ChromaDB client"""
@@ -630,13 +627,14 @@ class ChromaVectorStore(VectorStore):
                         os.makedirs(parent_dir, exist_ok=True)
             except (OSError, PermissionError) as e:
                 raise ValueError(f"Cannot access persist directory {self.persist_directory}: {e}")
-
+    
     @classmethod
-    def get_config_class(cls) -> Type[Dict]:
+    def get_config_class(cls):
         """
         Get the configuration class for this VectorStore
         
         Returns:
             Configuration class type
         """
+        from typing import Dict
         return Dict
