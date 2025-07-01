@@ -5,7 +5,7 @@ This plugin provides ChromaDB integration for the refinire-rag system,
 following the new plugin development guidelines.
 """
 
-__version__ = "0.0.2"
+__version__ = "0.0.6"
 __author__ = "refinire-rag-chroma contributors"
 __description__ = "ChromaDB VectorStore plugin for refinire-rag"
 
