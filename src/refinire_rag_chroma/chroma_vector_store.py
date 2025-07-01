@@ -174,6 +174,10 @@ class ChromaVectorStore(VectorStore):
                 documents=[entry.content]
             )
             logger.debug(f"Added vector: {entry.document_id}")
+            
+            # Update processing stats
+            self.processing_stats["vectors_stored"] += 1
+            
             return entry.document_id
             
         except Exception as e:
@@ -205,6 +209,10 @@ class ChromaVectorStore(VectorStore):
                 documents=documents
             )
             logger.info(f"Added {len(entries)} vectors to collection")
+            
+            # Update processing stats
+            self.processing_stats["vectors_stored"] += len(entries)
+            
             return ids
             
         except Exception as e:
@@ -292,9 +300,15 @@ class ChromaVectorStore(VectorStore):
                         search_results.append(search_result)
             
             logger.debug(f"Found {len(search_results)} similar vectors")
+            
+            # Update processing stats
+            self.processing_stats["searches_performed"] += 1
+            
             return search_results
             
         except Exception as e:
+            # Update error stats
+            self.processing_stats["errors"] += 1
             raise StorageError(f"Failed to search similar vectors: {str(e)}")
     
     def get_vector(self, document_id: str) -> Optional[VectorEntry]:
@@ -342,6 +356,9 @@ class ChromaVectorStore(VectorStore):
                 
                 if not content:
                     content = metadata.get('content', '')
+                
+                # Update processing stats
+                self.processing_stats["vectors_retrieved"] += 1
                 
                 return VectorEntry(
                     document_id=document_id,
@@ -462,9 +479,15 @@ class ChromaVectorStore(VectorStore):
                     ))
             
             logger.debug(f"Found {len(search_results)} vectors matching metadata filter")
+            
+            # Update processing stats
+            self.processing_stats["searches_performed"] += 1
+            
             return search_results
             
         except Exception as e:
+            # Update error stats
+            self.processing_stats["errors"] += 1
             raise StorageError(f"Failed to search by metadata: {str(e)}")
     
     def count_vectors(self, filters: Optional[Dict[str, Any]] = None) -> int:
@@ -571,7 +594,10 @@ class ChromaVectorStore(VectorStore):
         if not self._embedder:
             raise StorageError("Embedder not set. Call set_embedder() first.")
         
+        import time
+        
         for document in documents:
+            start_time = time.time()
             try:
                 # Generate embedding for the document
                 embedding = self._embedder.embed_text(document.content)
@@ -588,15 +614,25 @@ class ChromaVectorStore(VectorStore):
                     metadata=document.metadata
                 )
                 
-                # Add to vector store
+                # Add to vector store (statistics are updated in add_vector)
                 self.add_vector(vector_entry)
                 
                 logger.debug(f"Processed and stored document: {document.id}")
+                
+                # Update processing stats
+                processing_time = time.time() - start_time
+                self.processing_stats["documents_processed"] += 1
+                self.processing_stats["total_processing_time"] += processing_time
+                self.processing_stats["last_processed"] = time.time()
                 
                 # Yield the original document
                 yield document
                 
             except Exception as e:
+                # Update error stats
+                self.processing_stats["errors"] += 1
+                self.processing_stats["embedding_errors"] += 1
+                
                 logger.error(f"Failed to process document {document.id}: {str(e)}")
                 raise StorageError(f"Failed to process document {document.id}: {str(e)}")
     
