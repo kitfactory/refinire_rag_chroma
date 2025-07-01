@@ -9,7 +9,7 @@ dependencies = [
     "numpy>=2.2.6",
     "oneenv>=0.3.1",
     "pydantic>=2.0.0",
-    "refinire-rag>=0.1.4",
+    "refinire-rag>=0.1.5",
 ]
 
 [project.optional-dependencies]
